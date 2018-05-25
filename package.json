@@ -1,0 +1,29 @@
+{
+  "name": "contracts",
+  "version": "1.0.0",
+  "description": "ARP's Smart Contracts",
+  "main": "truffle.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "migrate": "truffle migrate",
+    "console": "truffle console",
+    "test": "truffle test",
+    "clean": "rm -rf build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arpnetwork/contracts.git"
+  },
+  "author": "rdspot <rdspot@arpnetwork.org>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/arpnetwork/contracts/issues"
+  },
+  "homepage": "https://github.com/arpnetwork/contracts",
+  "dependencies": {
+    "npm": "^6.1.0",
+    "openzeppelin-solidity": "1.9.0"
+  }
+}
