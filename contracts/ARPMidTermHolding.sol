@@ -126,8 +126,10 @@ contract ARPMidTermHolding {
         arpDeposited = arpDeposited.add(amount);
 
         uint256 bonus = amount.div(BONUS_SCALE);
-        arpToken.safeTransferFrom(owner, address(this), bonus);
-        arpToken.safeTransfer(msg.sender, bonus);
+        if (bonus > 0) {
+            arpToken.safeTransferFrom(owner, address(this), bonus);
+            arpToken.safeTransfer(msg.sender, bonus);
+        }
         arpToken.safeTransferFrom(msg.sender, address(this), amount);
 
         emit Deposit(depositId++, msg.sender, amount, bonus);
