@@ -1,5 +1,6 @@
 var ARPToken = artifacts.require("./ARPToken.sol");
 var ARPTeamHolding = artifacts.require("./ARPTeamHolding.sol");
+var ARPMidTermHolding = artifacts.require("./ARPMidTermHolding.sol");
 
 module.exports = function (deployer, network, accounts) {
   if (network == "development") {
@@ -14,6 +15,13 @@ module.exports = function (deployer, network, accounts) {
         accounts[0],
         startTime
       );
+
+      deployer.deploy(
+        ARPMidTermHolding,
+        ARPToken.address,
+        accounts[0],
+        now
+      );
     });
   } else if (network == "live") {
     var arpToken = "0xbeb6fdf4ef6ceb975157be43cbe0047b248a8922";
@@ -22,6 +30,14 @@ module.exports = function (deployer, network, accounts) {
 
     deployer.deploy(
       ARPTeamHolding,
+      arpToken,
+      beneficiary,
+      startTime
+    );
+
+    startTime = 1530748800; // 2018-07-05 00:00:00 UTC
+    deployer.deploy(
+      ARPMidTermHolding,
       arpToken,
       beneficiary,
       startTime
