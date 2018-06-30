@@ -71,7 +71,7 @@ contract ARPMidTermHolding {
         // solium-disable-next-line security/no-block-members
         require(now >= depositStartTime.add(DRAIN_DELAY));
 
-        uint256 balance = arpBalance();
+        uint256 balance = arpToken.balanceOf(address(this));
         require(balance > 0);
 
         arpToken.safeTransfer(owner, balance);
@@ -81,11 +81,10 @@ contract ARPMidTermHolding {
 
     function() public {
         // solium-disable-next-line security/no-block-members
-        uint256 ts = now;
-
-        if (ts >= depositStartTime && ts < depositStopTime) {
+        if (now >= depositStartTime && now < depositStopTime) {
             deposit();
-        } else if (ts > depositStopTime){
+        // solium-disable-next-line security/no-block-members
+        } else if (now > depositStopTime){
             withdraw();
         } else {
             revert();
@@ -102,16 +101,8 @@ contract ARPMidTermHolding {
         return records[_owner].timestamp.add(WITHDRAWAL_DELAY);
     }
 
-    /// Gets current ARP balance.
-    function arpBalance() public view returns (uint256) {
-        return arpToken.balanceOf(address(this));
-    }
-
     /// Deposits ARP.
     function deposit() private {
-        // solium-disable-next-line security/no-block-members
-        require(now >= depositStartTime && now < depositStopTime);
-
         uint256 amount = arpToken
             .balanceOf(msg.sender)
             .min256(arpToken.allowance(msg.sender, address(this)));
@@ -143,14 +134,10 @@ contract ARPMidTermHolding {
         require(record.amount > 0);
         // solium-disable-next-line security/no-block-members
         require(now >= record.timestamp.add(WITHDRAWAL_DELAY));
-
         uint256 amount = record.amount;
-        require(amount <= arpDeposited);
-        uint256 balance = arpBalance();
-        require(amount <= balance);
+        delete records[msg.sender];
 
         arpDeposited = arpDeposited.sub(amount);
-        delete records[msg.sender];
 
         arpToken.safeTransfer(msg.sender, amount);
 
