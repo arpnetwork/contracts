@@ -118,8 +118,7 @@ contract ARPMidTermHolding {
 
         uint256 bonus = amount.div(BONUS_SCALE);
         if (bonus > 0) {
-            arpToken.safeTransferFrom(owner, address(this), bonus);
-            arpToken.safeTransfer(msg.sender, bonus);
+            arpToken.safeTransferFrom(owner, msg.sender, bonus);
         }
         arpToken.safeTransferFrom(msg.sender, address(this), amount);
 
