@@ -20,13 +20,11 @@ module.exports = function (deployer, network, accounts) {
       deployer.deploy(
         ARPMidTermHolding,
         ARPToken.address,
-        accounts[0],
         now
       );
       deployer.deploy(
         ARPLongTermHolding,
         ARPToken.address,
-        accounts[0],
         now
       );
     });
@@ -46,13 +44,11 @@ module.exports = function (deployer, network, accounts) {
     deployer.deploy(
       ARPMidTermHolding,
       arpToken,
-      beneficiary,
       startTime
     );
     deployer.deploy(
       ARPLongTermHolding,
       arpToken,
-      beneficiary,
       startTime
     );
   }

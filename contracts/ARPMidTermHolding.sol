@@ -52,11 +52,9 @@ contract ARPMidTermHolding {
     event Withdrawal(uint256 _withdrawId, address indexed _addr, uint256 _amount);
 
     /// Initialize the contract
-    constructor(ERC20 _arpToken, address _owner, uint256 _depositStartTime) public {
-        require(_owner != address(0));
-
+    constructor(ERC20 _arpToken, uint256 _depositStartTime) public {
         arpToken = _arpToken;
-        owner = _owner;
+        owner = msg.sender;
         depositStartTime = _depositStartTime;
         depositStopTime = _depositStartTime.add(DEPOSIT_PERIOD);
     }
