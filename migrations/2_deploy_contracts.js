@@ -2,6 +2,7 @@ var ARPToken = artifacts.require("./ARPToken.sol");
 var ARPTeamHolding = artifacts.require("./ARPTeamHolding.sol");
 var ARPMidTermHolding = artifacts.require("./ARPMidTermHolding.sol");
 var ARPLongTermHolding = artifacts.require("./ARPLongTermHolding.sol");
+var ARPHoldingWalletCreator = artifacts.require("ARPHoldingWalletCreator");
 
 module.exports = function (deployer, network, accounts) {
   if (network == "development") {
@@ -21,35 +22,20 @@ module.exports = function (deployer, network, accounts) {
         ARPMidTermHolding,
         ARPToken.address,
         now
-      );
-      deployer.deploy(
-        ARPLongTermHolding,
-        ARPToken.address,
-        now
-      );
+      ).then(function () {
+        deployer.deploy(
+          ARPLongTermHolding,
+          ARPToken.address,
+          now
+        ).then(function () {
+          deployer.deploy(
+            ARPHoldingWalletCreator,
+            ARPToken.address,
+            ARPMidTermHolding.address,
+            ARPLongTermHolding.address
+          );
+        });
+      });
     });
-  } else if (network == "live") {
-    var arpToken = "0xbeb6fdf4ef6ceb975157be43cbe0047b248a8922";
-    var beneficiary = "0x1fafd10cea9d705ee1f37b575987ad0890889121";
-    var startTime = 1525132800; // 2018-05-01 00:00:00 UTC
-
-    deployer.deploy(
-      ARPTeamHolding,
-      arpToken,
-      beneficiary,
-      startTime
-    );
-
-    startTime = 1530748800; // 2018-07-05 00:00:00 UTC
-    deployer.deploy(
-      ARPMidTermHolding,
-      arpToken,
-      startTime
-    );
-    deployer.deploy(
-      ARPLongTermHolding,
-      arpToken,
-      startTime
-    );
   }
 };
