@@ -14,4 +14,8 @@ contract ARPTeamHolding is TokenTimelock {
         public
     {
     }
+
+    function() public {
+        release();
+    }
 }
