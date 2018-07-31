@@ -1,8 +1,8 @@
-var ARPToken = artifacts.require("./ARPToken.sol");
-var ARPTeamHolding = artifacts.require("./ARPTeamHolding.sol");
-var ARPHolding = artifacts.require("./ARPHolding.sol");
-var ARPMidTermHolding = artifacts.require("./ARPMidTermHolding.sol");
-var ARPLongTermHolding = artifacts.require("./ARPLongTermHolding.sol");
+var ARPToken = artifacts.require("ARPToken");
+var ARPTeamHolding = artifacts.require("ARPTeamHolding");
+var ARPHolding = artifacts.require("ARPHolding.sol");
+var ARPMidTermHolding = artifacts.require("ARPMidTermHolding");
+var ARPLongTermHolding = artifacts.require("ARPLongTermHolding");
 var ARPHoldingWalletCreator = artifacts.require("ARPHoldingWalletCreator");
 
 module.exports = function (deployer, network, accounts) {
