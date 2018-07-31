@@ -1,5 +1,6 @@
 var ARPToken = artifacts.require("./ARPToken.sol");
 var ARPTeamHolding = artifacts.require("./ARPTeamHolding.sol");
+var ARPHolding = artifacts.require("./ARPHolding.sol");
 var ARPMidTermHolding = artifacts.require("./ARPMidTermHolding.sol");
 var ARPLongTermHolding = artifacts.require("./ARPLongTermHolding.sol");
 var ARPHoldingWalletCreator = artifacts.require("ARPHoldingWalletCreator");
@@ -13,6 +14,15 @@ module.exports = function (deployer, network, accounts) {
 
       deployer.deploy(
         ARPTeamHolding,
+        ARPToken.address,
+        accounts[0],
+        startTime
+      );
+
+      startTime = now - 60 * 60 * 24 * 365;
+      startTime += 60 * 5; // 5 minutes delay for test
+      deployer.deploy(
+        ARPHolding,
         ARPToken.address,
         accounts[0],
         startTime
