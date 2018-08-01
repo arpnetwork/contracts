@@ -1,51 +1,61 @@
 var ARPToken = artifacts.require("ARPToken");
 var ARPTeamHolding = artifacts.require("ARPTeamHolding");
-var ARPHolding = artifacts.require("ARPHolding.sol");
 var ARPMidTermHolding = artifacts.require("ARPMidTermHolding");
 var ARPLongTermHolding = artifacts.require("ARPLongTermHolding");
 var ARPHoldingWalletCreator = artifacts.require("ARPHoldingWalletCreator");
+var ARPHolding = artifacts.require("ARPHolding");
 
-module.exports = function (deployer, network, accounts) {
+const SECONDS_PER_DAY = 60 * 60 * 24;
+const SECONDS_PER_YEAR = SECONDS_PER_DAY * 365;
+
+module.exports = function(deployer, network, accounts) {
   if (network == "development") {
-    deployer.deploy(ARPToken).then(function () {
-      var now = (new Date()).getTime() / 1000;
-      var startTime = now - 60 * 60 * 24 * 365 * 2;
-      startTime += 60 * 5; // 5 minutes delay for test
+    var now = (new Date()).getTime() / 1000;
+    var beneficiary = accounts[0];
 
-      deployer.deploy(
+    deployer.deploy(ARPToken).then(function() {
+      // 5 minutes delay for test
+      var delay = SECONDS_PER_YEAR * 2;
+      var startTime = now - delay;
+      startTime += 60 * 5;
+
+      return deployer.deploy(
         ARPTeamHolding,
         ARPToken.address,
-        accounts[0],
+        beneficiary,
         startTime
       );
-
-      startTime = now - 60 * 60 * 24 * 365;
-      startTime += 60 * 5; // 5 minutes delay for test
-      deployer.deploy(
-        ARPHolding,
-        ARPToken.address,
-        accounts[0],
-        startTime
-      );
-
-      deployer.deploy(
+    }).then(function() {
+      return deployer.deploy(
         ARPMidTermHolding,
         ARPToken.address,
         now
-      ).then(function () {
-        deployer.deploy(
-          ARPLongTermHolding,
-          ARPToken.address,
-          now
-        ).then(function () {
-          deployer.deploy(
-            ARPHoldingWalletCreator,
-            ARPToken.address,
-            ARPMidTermHolding.address,
-            ARPLongTermHolding.address
-          );
-        });
-      });
+      );
+    }).then(function() {
+      return deployer.deploy(
+        ARPLongTermHolding,
+        ARPToken.address,
+        now
+      );
+    }).then(function() {
+      return deployer.deploy(
+        ARPHoldingWalletCreator,
+        ARPToken.address,
+        ARPMidTermHolding.address,
+        ARPLongTermHolding.address
+      );
+    }).then(function() {
+      // 5 minutes delay for test
+      var delay = SECONDS_PER_YEAR;
+      var startTime = now - delay;
+      startTime += 60 * 5;
+
+      return deployer.deploy(
+        ARPHolding,
+        ARPToken.address,
+        beneficiary,
+        startTime
+      );
     });
   }
 };
