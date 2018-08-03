@@ -26,7 +26,7 @@ contract ARPRegistry {
     ERC20 public arpToken;
 
     mapping (address => Server) public servers;
-    address[] public indexes;
+    address[] indexes;
 
     event Registered(address indexed server);
     event Unregistered(address indexed server);
@@ -82,6 +82,33 @@ contract ARPRegistry {
         arpToken.safeTransfer(msg.sender, amount);
 
         emit Unregistered(msg.sender);
+    }
+
+    function serverByIndex(
+        uint256 _index
+    )
+        view
+        public
+        returns (
+            address addr,
+            uint32 ip,
+            uint16 port,
+            uint256 capacity,
+            uint256 amount,
+            uint256 expired,
+            uint256 deviceCount
+        )
+    {
+        require(_index < indexes.length);
+
+        addr = indexes[_index];
+        Server storage s = servers[addr];
+        ip = s.ip;
+        port = s.port;
+        capacity = s.capacity;
+        amount = s.amount;
+        expired = s.expired;
+        deviceCount = s.deviceCount;
     }
 
     function serverCount() view public returns (uint256) {
