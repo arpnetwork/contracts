@@ -58,7 +58,7 @@ contract ARPRegistry {
         bool added = s.ip == 0;
         require(_capacity >= s.capacity);
         require(_amount >= s.amount);
-        require(_amount >= SERVER_HOLDING + HOLDING_PER_DEVICE * (_capacity - s.deviceCount));
+        require(_amount >= minHolding(_capacity - s.deviceCount));
         uint256 amount = _amount.sub(s.amount);
         require(arpToken.balanceOf(msg.sender) >= amount);
         require(arpToken.allowance(msg.sender, address(this)) >= amount);
@@ -129,7 +129,8 @@ contract ARPRegistry {
         Device storage dev = devices[_device];
         require(dev.server == msg.sender);
 
-        if (now >= servers[msg.sender].expired) {
+        Server storage s = servers[msg.sender];
+        if (now >= s.expired) {
             unbindDeviceInternal(_device);
         } else if (dev.expired == 0) {
             dev.expired = now + DEVICE_UNBOUND_DELAY;
@@ -137,6 +138,7 @@ contract ARPRegistry {
 
             emit DeviceExpired(_device, msg.sender);
         } else if (now >= dev.expired) {
+            require(dev.amount + s.amount >= minHolding(s.capacity - s.deviceCount + 1));
             unbindDeviceInternal(_device);
         } else {
             revert();
@@ -188,5 +190,9 @@ contract ARPRegistry {
         arpToken.safeTransfer(_device, DEVICE_HOLDING);
 
         emit DeviceUnbound(_device, server);
+    }
+
+    function minHolding(uint256 capacity) private pure returns (uint256) {
+        return SERVER_HOLDING + HOLDING_PER_DEVICE * capacity;
     }
 }
