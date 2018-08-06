@@ -73,7 +73,9 @@ contract ARPRegistry {
             indexes.push(msg.sender);
         }
 
-        arpToken.safeTransferFrom(msg.sender, address(this), amount);
+        if (amount > 0) {
+            arpToken.safeTransferFrom(msg.sender, address(this), amount);
+        }
 
         emit Registered(msg.sender);
     }
