@@ -125,7 +125,9 @@ contract ARPRegistry {
         Device storage dev = devices[_device];
         require(dev.server == msg.sender);
 
-        if (dev.expired == 0) {
+        if (now >= servers[msg.sender].expired) {
+            unbindDeviceInternal(_device);
+        } else if (dev.expired == 0) {
             dev.expired = now + DEVICE_UNBOUND_DELAY;
             devices[_device] = dev;
 
