@@ -4,7 +4,7 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
 
-// solium-disable error-reason
+// solium-disable security/no-block-members, error-reason
 
 contract ARPRegistry {
     using SafeERC20 for ERC20;
@@ -65,7 +65,6 @@ contract ARPRegistry {
         s.port = _port;
         s.capacity = _capacity;
         s.amount = _amount;
-        // solium-disable-next-line security/no-block-members
         s.expired = now + EXPIRED_DELAY;
         servers[msg.sender] = s;
         indexes.push(msg.sender);
@@ -78,7 +77,6 @@ contract ARPRegistry {
     function unregister() public {
         Server storage s = servers[msg.sender];
         require(s.ip != 0);
-        // solium-disable-next-line security/no-block-members
         require(now >= s.expired);
         require(s.deviceCount == 0);
         uint256 amount = s.amount;
@@ -126,12 +124,10 @@ contract ARPRegistry {
         require(dev.server == msg.sender);
 
         if (dev.expired == 0) {
-            // solium-disable-next-line security/no-block-members
             dev.expired = now + DEVICE_UNBOUND_DELAY;
             devices[_device] = dev;
 
             emit DeviceExpired(_device, msg.sender);
-        // solium-disable-next-line security/no-block-members
         } else if (now >= dev.expired) {
             unbindDeviceInternal(_device);
         } else {
@@ -142,8 +138,8 @@ contract ARPRegistry {
     function serverByIndex(
         uint256 _index
     )
-        view
         public
+        view
         returns (
             address addr,
             uint32 ip,
@@ -166,7 +162,7 @@ contract ARPRegistry {
         deviceCount = s.deviceCount;
     }
 
-    function serverCount() view public returns (uint256) {
+    function serverCount() public view returns (uint256) {
         return indexes.length;
     }
 
