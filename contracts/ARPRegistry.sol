@@ -4,14 +4,18 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
 
+// solium-disable error-reason
+
 contract ARPRegistry {
     using SafeERC20 for ERC20;
     using SafeMath for uint256;
 
     uint256 public constant SERVER_HOLDING = 100000 ether;
+    uint256 public constant DEVICE_HOLDING = 500 ether;
     uint256 public constant HOLDING_PER_DEVICE = 100 ether;
     uint256 public constant EXPIRED_DELAY = 30 days;
     uint256 public constant CAPACITY_MIN = 100;
+    uint256 public constant DEVICE_UNBOUND_DELAY = 1 days;
 
     struct Server {
         uint32 ip;
@@ -23,13 +27,23 @@ contract ARPRegistry {
         uint256 deviceCount;
     }
 
+    struct Device {
+        address server;
+        uint256 amount;
+        uint256 expired;
+    }
+
     ERC20 public arpToken;
 
     mapping (address => Server) public servers;
+    mapping (address => Device) public devices;
     address[] indexes;
 
     event Registered(address indexed server);
     event Unregistered(address indexed server);
+    event DeviceBound(address indexed device, address indexed server);
+    event DeviceUnbound(address indexed device, address indexed server);
+    event DeviceExpired(address indexed device, address indexed server);
 
     constructor(ERC20 _arpToken) public {
         require(_arpToken != address(0x0));
@@ -39,11 +53,11 @@ contract ARPRegistry {
     function register(uint32 _ip, uint16 _port, uint256 _capacity, uint256 _amount) public {
         require(_ip != 0 && _port != 0);
         require(_capacity >= CAPACITY_MIN);
-        require(_amount >= SERVER_HOLDING + HOLDING_PER_DEVICE * _capacity);
 
         Server storage s = servers[msg.sender];
         require(_capacity >= s.capacity);
         require(_amount >= s.amount);
+        require(_amount >= SERVER_HOLDING + HOLDING_PER_DEVICE * (_capacity - s.deviceCount));
         uint256 amount = _amount.sub(s.amount);
         require(arpToken.balanceOf(msg.sender) >= amount);
         require(arpToken.allowance(msg.sender, address(this)) >= amount);
@@ -84,6 +98,47 @@ contract ARPRegistry {
         emit Unregistered(msg.sender);
     }
 
+    function bindDevice(address _server) public {
+        require(devices[msg.sender].server == address(0x0));
+        require(arpToken.balanceOf(msg.sender) >= DEVICE_HOLDING);
+        require(arpToken.allowance(msg.sender, address(this)) >= DEVICE_HOLDING);
+
+        Server storage s = servers[_server];
+        require(s.deviceCount < s.capacity);
+        require(s.amount >= SERVER_HOLDING + HOLDING_PER_DEVICE);
+        s.amount = s.amount.sub(HOLDING_PER_DEVICE);
+        s.deviceCount = s.deviceCount.add(1);
+        servers[_server] = s;
+
+        devices[msg.sender] = Device(_server, HOLDING_PER_DEVICE, 0);
+
+        emit DeviceBound(msg.sender, _server);
+    }
+
+    function unbindDevice() public {
+        require(devices[msg.sender].server != address(0x0));
+
+        unbindDeviceInternal(msg.sender);
+    }
+
+    function unbindDeviceByServer(address _device) public {
+        Device storage dev = devices[_device];
+        require(dev.server == msg.sender);
+
+        if (dev.expired == 0) {
+            // solium-disable-next-line security/no-block-members
+            dev.expired = now + DEVICE_UNBOUND_DELAY;
+            devices[_device] = dev;
+
+            emit DeviceExpired(_device, msg.sender);
+        // solium-disable-next-line security/no-block-members
+        } else if (now >= dev.expired) {
+            unbindDeviceInternal(_device);
+        } else {
+            revert();
+        }
+    }
+
     function serverByIndex(
         uint256 _index
     )
@@ -113,5 +168,19 @@ contract ARPRegistry {
 
     function serverCount() view public returns (uint256) {
         return indexes.length;
+    }
+
+    function unbindDeviceInternal(address _device) private {
+        Device storage dev = devices[_device];
+        address server = dev.server;
+        uint256 amount = dev.amount;
+        delete devices[_device];
+
+        Server storage s = servers[server];
+        s.amount = s.amount.add(amount);
+        s.deviceCount = s.deviceCount.sub(1);
+        servers[server] = s;
+
+        emit DeviceUnbound(_device, server);
     }
 }
