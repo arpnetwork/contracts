@@ -55,6 +55,7 @@ contract ARPRegistry {
         require(_capacity >= CAPACITY_MIN);
 
         Server storage s = servers[msg.sender];
+        bool added = s.ip == 0;
         require(_capacity >= s.capacity);
         require(_amount >= s.amount);
         require(_amount >= SERVER_HOLDING + HOLDING_PER_DEVICE * (_capacity - s.deviceCount));
@@ -67,7 +68,10 @@ contract ARPRegistry {
         s.amount = _amount;
         s.expired = now + EXPIRED_DELAY;
         servers[msg.sender] = s;
-        indexes.push(msg.sender);
+
+        if (added) {
+            indexes.push(msg.sender);
+        }
 
         arpToken.safeTransferFrom(msg.sender, address(this), amount);
 
