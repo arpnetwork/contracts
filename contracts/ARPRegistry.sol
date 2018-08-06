@@ -110,6 +110,8 @@ contract ARPRegistry {
 
         devices[msg.sender] = Device(_server, HOLDING_PER_DEVICE, 0);
 
+        arpToken.safeTransferFrom(msg.sender, address(this), DEVICE_HOLDING);
+
         emit DeviceBound(msg.sender, _server);
     }
 
@@ -176,6 +178,8 @@ contract ARPRegistry {
         s.amount = s.amount.add(amount);
         s.deviceCount = s.deviceCount.sub(1);
         servers[server] = s;
+
+        arpToken.safeTransfer(_device, DEVICE_HOLDING);
 
         emit DeviceUnbound(_device, server);
     }
