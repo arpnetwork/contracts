@@ -41,6 +41,7 @@ contract ARPRegistry {
 
     event Registered(address indexed server);
     event Unregistered(address indexed server);
+    event Updated(address indexed server);
     event DeviceBound(address indexed device, address indexed server);
     event DeviceUnbound(address indexed device, address indexed server);
     event DeviceExpired(address indexed device, address indexed server);
@@ -53,29 +54,18 @@ contract ARPRegistry {
     function register(uint32 _ip, uint16 _port, uint256 _capacity, uint256 _amount) public {
         require(_ip != 0 && _port != 0);
         require(_capacity >= CAPACITY_MIN);
+        require(_amount >= minHolding(_capacity));
 
         Server storage s = servers[msg.sender];
-        bool added = s.ip == 0;
-        require(_capacity >= s.capacity);
-        require(_amount >= s.amount);
-        require(_amount >= minHolding(_capacity - s.deviceCount));
-        uint256 amount = _amount.sub(s.amount);
-        require(arpToken.balanceOf(msg.sender) >= amount);
-        require(arpToken.allowance(msg.sender, address(this)) >= amount);
+        require(s.ip == 0);
         s.ip = _ip;
         s.port = _port;
         s.capacity = _capacity;
         s.amount = _amount;
         s.expired = now + EXPIRED_DELAY;
-        servers[msg.sender] = s;
+        indexes.push(msg.sender);
 
-        if (added) {
-            indexes.push(msg.sender);
-        }
-
-        if (amount > 0) {
-            arpToken.safeTransferFrom(msg.sender, address(this), amount);
-        }
+        arpToken.safeTransferFrom(msg.sender, address(this), _amount);
 
         emit Registered(msg.sender);
     }
@@ -102,6 +92,24 @@ contract ARPRegistry {
         emit Unregistered(msg.sender);
     }
 
+    function update(uint32 _ip, uint16 _port, uint256 _capacity, uint256 _amount) public {
+        require(_ip != 0 && _port != 0);
+        Server storage s = servers[msg.sender];
+        require(s.ip != 0);
+        require(s.amount + _amount >= minHolding(s.capacity + _capacity - s.deviceCount));
+        s.ip = _ip;
+        s.port = _port;
+        s.capacity = s.capacity.add(_capacity);
+        s.amount = s.amount.add(_amount);
+        s.expired = now + EXPIRED_DELAY;
+
+        if (_amount > 0) {
+            arpToken.safeTransferFrom(msg.sender, address(this), _amount);
+        }
+
+        emit Updated(msg.sender);
+    }
+
     function bindDevice(address _server) public {
         require(devices[msg.sender].server == address(0x0));
         require(arpToken.balanceOf(msg.sender) >= DEVICE_HOLDING);
@@ -112,7 +120,6 @@ contract ARPRegistry {
         require(s.amount >= SERVER_HOLDING + HOLDING_PER_DEVICE);
         s.amount = s.amount.sub(HOLDING_PER_DEVICE);
         s.deviceCount = s.deviceCount.add(1);
-        servers[_server] = s;
 
         devices[msg.sender] = Device(_server, HOLDING_PER_DEVICE, 0);
 
@@ -187,7 +194,6 @@ contract ARPRegistry {
         Server storage s = servers[server];
         s.amount = s.amount.add(amount);
         s.deviceCount = s.deviceCount.sub(1);
-        servers[server] = s;
 
         arpToken.safeTransfer(_device, DEVICE_HOLDING);
 
