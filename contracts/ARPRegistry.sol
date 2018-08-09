@@ -12,6 +12,7 @@ contract ARPRegistry {
 
     uint256 public constant SERVER_HOLDING = 100000 ether;
     uint256 public constant DEVICE_HOLDING = 500 ether;
+    uint256 public constant APP_HOLDING = 5000 ether;
     uint256 public constant HOLDING_PER_DEVICE = 100 ether;
     uint256 public constant EXPIRED_DELAY = 30 days;
     uint256 public constant CAPACITY_MIN = 100;
@@ -33,10 +34,16 @@ contract ARPRegistry {
         uint256 expired;
     }
 
+    struct App {
+        uint256 amount;
+        uint256 expired;
+    }
+
     ERC20 public arpToken;
 
     mapping (address => Server) public servers;
     mapping (address => Device) public devices;
+    mapping (bytes32 => App) apps;
     address[] indexes;
 
     event Registered(address indexed server);
@@ -45,6 +52,7 @@ contract ARPRegistry {
     event DeviceBound(address indexed device, address indexed server);
     event DeviceUnbound(address indexed device, address indexed server);
     event DeviceExpired(address indexed device, address indexed server);
+    event AppBound(address indexed app, address indexed server);
 
     constructor(ERC20 _arpToken) public {
         require(_arpToken != address(0x0));
@@ -154,6 +162,32 @@ contract ARPRegistry {
         }
     }
 
+    function bindApp(address _server, uint256 _amount) public {
+        bytes32 key = makeKey(msg.sender, _server);
+        App storage app = apps[key];
+        app.amount = app.amount.add(_amount);
+        require(app.amount >= APP_HOLDING);
+        app.expired = now + EXPIRED_DELAY;
+
+        if (_amount > 0) {
+            arpToken.safeTransferFrom(msg.sender, address(this), _amount);
+        }
+
+        emit AppBound(msg.sender, _server);
+    }
+
+    function unbindApp(address _server) public {
+        bytes32 key = makeKey(msg.sender, _server);
+        App storage app = apps[key];
+        require(now >= app.expired);
+        uint256 amount = app.amount;
+        delete apps[key];
+
+        if (amount > 0) {
+            arpToken.safeTransfer(msg.sender, amount);
+        }
+    }
+
     function serverByIndex(
         uint256 _index
     )
@@ -185,6 +219,23 @@ contract ARPRegistry {
         return indexes.length;
     }
 
+    function appOf(
+        address _app,
+        address _server
+    )
+        public
+        view
+        returns (
+            uint256 amount,
+            uint256 expired
+        )
+    {
+        bytes32 key = makeKey(_app, _server);
+        App storage app = apps[key];
+        amount = app.amount;
+        expired = app.expired;
+    }
+
     function unbindDeviceInternal(address _device) private {
         Device storage dev = devices[_device];
         address server = dev.server;
@@ -202,5 +253,9 @@ contract ARPRegistry {
 
     function minHolding(uint256 capacity) private pure returns (uint256) {
         return SERVER_HOLDING + HOLDING_PER_DEVICE * capacity;
+    }
+
+    function makeKey(address _app, address _server) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_app, _server));
     }
 }
