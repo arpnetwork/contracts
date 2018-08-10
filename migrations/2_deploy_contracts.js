@@ -7,6 +7,7 @@ var ARPHolding = artifacts.require("ARPHolding");
 var ARPWallet = artifacts.require("ARPWallet");
 var ARPMultiTransferer = artifacts.require("ARPMultiTransferer");
 var ARPRegistry = artifacts.require("ARPRegistry");
+var ARPBank = artifacts.require("ARPBank");
 
 const SECONDS_PER_DAY = 60 * 60 * 24;
 const SECONDS_PER_YEAR = SECONDS_PER_DAY * 365;
@@ -72,6 +73,11 @@ module.exports = function(deployer, network, accounts) {
     }).then(function() {
       return deployer.deploy(
         ARPRegistry,
+        ARPToken.address
+      );
+    }).then(function() {
+      return deployer.deploy(
+        ARPBank,
         ARPToken.address
       );
     });
