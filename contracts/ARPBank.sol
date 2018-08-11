@@ -51,8 +51,10 @@ contract ARPBank {
     }
 
     function deposit(uint256 _value, uint256 _expired) public {
-        Account storage a = accounts[msg.sender];
+        require(_value > 0);
         require(_expired == 0 || _expired > now);
+
+        Account storage a = accounts[msg.sender];
         require(_expired >= a.expired || now >= a.expired);
         a.amount = a.amount.add(_value);
         a.expired = _expired;
@@ -84,6 +86,26 @@ contract ARPBank {
         arpToken.safeTransfer(msg.sender, _value);
 
         emit Withdrawal(msg.sender, id, _value);
+    }
+
+    function updateAccountId() public {
+        Account storage a = accounts[msg.sender];
+        require(a.id != 0);
+        require(now >= a.expired);
+        a.id = block.number;
+
+        emit Deposit(msg.sender, a.id, 0, a.expired);
+    }
+
+    function updateAccountExpired(uint256 _expired) public {
+        require(_expired == 0 || _expired > now);
+
+        Account storage a = accounts[msg.sender];
+        require(a.id != 0);
+        require(_expired >= a.expired || now >= a.expired);
+        a.expired = _expired;
+
+        emit Deposit(msg.sender, a.id, 0, _expired);
     }
 
     function approve(
