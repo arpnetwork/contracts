@@ -22,6 +22,7 @@ contract ARPBank {
         uint256 amount;
         uint256 paid;
         uint256 expired;
+        address proxy;
     }
 
     ERC20 public arpToken;
@@ -112,13 +113,17 @@ contract ARPBank {
         address _spender,
         uint256 _spenderId,
         uint256 _amount,
-        uint256 _expired
+        uint256 _expired,
+        address _proxy
     )
         public
     {
         require(_expired > now);
 
         Check storage c = checks[msg.sender][_spender];
+        if (c.id == 0) {
+            c.proxy = _proxy;
+        }
         if (_amount >= c.amount) {
             increaseApproval(_spender, _spenderId, _amount.sub(c.amount), _expired);
         } else {
@@ -191,6 +196,12 @@ contract ARPBank {
 
     function cancelApprovalBySpender(address _owner) public {
         cancelApprovalInternal(_owner, msg.sender);
+    }
+
+    function cancelApprovalByProxy(address _owner, address _spender) public {
+        Check storage c = checks[_owner][_spender];
+        require(msg.sender == c.proxy);
+        cancelApprovalInternal(_owner, _spender);
     }
 
     function cash(address _from, uint256 _amount, uint8 _v, bytes32 _r, bytes32 _s) public {
