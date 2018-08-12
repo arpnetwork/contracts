@@ -186,14 +186,11 @@ contract ARPBank {
     function cancelApproval(address _spender) public {
         Check storage c = checks[msg.sender][_spender];
         require(now >= c.expired || accounts[_spender].id != c.spenderId);
-        uint256 id = c.id;
-        uint256 amount = c.amount.sub(c.paid);
-        delete checks[msg.sender][_spender];
+        cancelApprovalInternal(msg.sender, _spender);
+    }
 
-        Account storage a = accounts[msg.sender];
-        a.amount = a.amount.add(amount);
-
-        emit Approval(msg.sender, _spender, id, 0, 0);
+    function cancelApprovalBySpender(address _owner) public {
+        cancelApprovalInternal(_owner, msg.sender);
     }
 
     function cash(address _from, uint256 _amount, uint8 _v, bytes32 _r, bytes32 _s) public {
@@ -231,5 +228,20 @@ contract ARPBank {
         amount = c.amount;
         paid = c.paid;
         expired = c.expired;
+    }
+
+    function cancelApprovalInternal(address _owner, address _spender) private {
+        Check storage c = checks[_owner][_spender];
+        require(c.id != 0);
+        uint256 id = c.id;
+        uint256 amount = c.amount.sub(c.paid);
+        delete checks[_owner][_spender];
+
+        if (amount > 0) {
+            Account storage a = accounts[_owner];
+            a.amount = a.amount.add(amount);
+        }
+
+        emit Approval(msg.sender, _spender, id, 0, 0);
     }
 }
