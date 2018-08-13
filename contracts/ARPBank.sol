@@ -10,15 +10,10 @@ contract ARPBank {
     using SafeERC20 for ERC20;
     using SafeMath for uint256;
 
-    struct Account {
-        uint256 id;
-        uint256 amount;
-        uint256 expired;
-    }
+    uint256 public constant PERMANENT = 0;
 
     struct Check {
         uint256 id;
-        uint256 spenderId;
         uint256 amount;
         uint256 paid;
         uint256 expired;
@@ -27,17 +22,18 @@ contract ARPBank {
 
     ERC20 public arpToken;
 
-    mapping (address => Account) public accounts;
+    mapping (address => uint256) balances;
     mapping (address => mapping (address => Check)) checks;
 
-    event Deposit(address indexed owner, uint256 id, uint256 value, uint256 expired);
-    event Withdrawal(address indexed owner, uint256 id, uint256 value);
+    event Deposit(address indexed owner, uint256 value);
+    event Withdrawal(address indexed owner, uint256 value);
     event Approval(
         address indexed owner,
         address indexed spender,
         uint256 id,
         uint256 value,
-        uint256 expired
+        uint256 expired,
+        address proxy
     );
     event Cashing(
         address indexed spender,
@@ -51,146 +47,107 @@ contract ARPBank {
         arpToken = _arpToken;
     }
 
-    function deposit(uint256 _value, uint256 _expired) public {
+    function deposit(uint256 _value) public {
         require(_value > 0);
-        require(_expired == 0 || _expired > now);
 
-        Account storage a = accounts[msg.sender];
-        require(_expired >= a.expired || now >= a.expired);
-        a.amount = a.amount.add(_value);
-        a.expired = _expired;
-
-        if (a.id == 0) {
-            a.id = block.number;
-        }
+        balances[msg.sender] = balances[msg.sender].add(_value);
 
         arpToken.safeTransferFrom(msg.sender, address(this), _value);
 
-        emit Deposit(msg.sender, a.id, _value, _expired);
+        emit Deposit(msg.sender, _value);
     }
 
-    function withdraw(uint256 _value, uint256 _expired) public {
+    function withdraw(uint256 _value) public {
         require(_value > 0);
-        require(_expired == 0 || _expired > now);
+        require(_value <= balances[msg.sender]);
 
-        Account storage a = accounts[msg.sender];
-        require(now >= a.expired);
-        require(_value <= a.amount);
-        uint256 id = a.id;
-        a.id = block.number;
-        a.amount = a.amount.sub(_value);
-        a.expired = _expired;
-        if (a.amount == 0) {
-            delete accounts[msg.sender];
-        }
+        balances[msg.sender] = balances[msg.sender].sub(_value);
 
         arpToken.safeTransfer(msg.sender, _value);
 
-        emit Withdrawal(msg.sender, id, _value);
-    }
-
-    function updateAccountId() public {
-        Account storage a = accounts[msg.sender];
-        require(a.id != 0);
-        require(now >= a.expired);
-        a.id = block.number;
-
-        emit Deposit(msg.sender, a.id, 0, a.expired);
-    }
-
-    function updateAccountExpired(uint256 _expired) public {
-        require(_expired == 0 || _expired > now);
-
-        Account storage a = accounts[msg.sender];
-        require(a.id != 0);
-        require(_expired >= a.expired || now >= a.expired);
-        a.expired = _expired;
-
-        emit Deposit(msg.sender, a.id, 0, _expired);
+        emit Withdrawal(msg.sender, _value);
     }
 
     function approve(
         address _spender,
-        uint256 _spenderId,
         uint256 _amount,
         uint256 _expired,
         address _proxy
     )
         public
     {
-        require(_expired > now);
+        require(_spender != address(0x0));
+        require(_expired == PERMANENT || _expired > now);
 
         Check storage c = checks[msg.sender][_spender];
         if (c.id == 0) {
+            c.id = block.number;
+            c.expired = _expired;
             c.proxy = _proxy;
+        } else if (c.expired != PERMANENT && now >= c.expired) {
+            c.id = block.number;
+            // DO NOT MODIFY EXPIRED HERE
         }
         if (_amount >= c.amount) {
-            increaseApproval(_spender, _spenderId, _amount.sub(c.amount), _expired);
+            increaseApproval(_spender, _amount.sub(c.amount), _expired);
         } else {
-            decreaseApproval(_spender, _spenderId, c.amount.sub(_amount), _expired);
+            decreaseApproval(_spender, c.amount.sub(_amount), _expired);
         }
     }
 
     function increaseApproval(
         address _spender,
-        uint256 _spenderId,
         uint256 _value,
         uint256 _expired
     )
         public
     {
-        require(_spenderId != 0);
-        require(_spenderId == accounts[_spender].id);
-        require(_expired > now);
-
-        Account storage a = accounts[msg.sender];
-        require(_value <= a.amount);
-        require(_expired <= a.expired);
-        a.amount = a.amount.sub(_value);
+        require(_spender != address(0x0));
+        require(_value <= balances[msg.sender]);
+        require(_expired == PERMANENT || _expired > now);
 
         Check storage c = checks[msg.sender][_spender];
-        require(_expired >= c.expired);
-        if (c.id == 0) {
-            c.id = block.number;
+        require(c.id != 0);
+        require(
+            _expired == PERMANENT ||
+            (c.expired != PERMANENT && _expired >= c.expired));
+
+        if (_value > 0) {
+            balances[msg.sender] = balances[msg.sender].sub(_value);
+            c.amount = c.amount.add(_value);
         }
-        c.spenderId = _spenderId;
-        c.amount = c.amount.add(_value);
         c.expired = _expired;
 
-        emit Approval(msg.sender, _spender, c.id, c.amount, _expired);
+        emit Approval(msg.sender, _spender, c.id, c.amount, _expired, c.proxy);
     }
 
     function decreaseApproval(
         address _spender,
-        uint256 _spenderId,
         uint256 _value,
         uint256 _expired
     )
         public
     {
-        require(_spenderId != 0);
-        require(_spenderId == accounts[_spender].id);
+        require(_spender != address(0x0));
         require(_value > 0);
-        require(_expired > now);
+        require(_expired == PERMANENT || _expired > now);
 
         Check storage c = checks[msg.sender][_spender];
-        require(now >= c.expired || _spenderId != c.spenderId);
+        require(c.id != 0);
+        require(c.expired != PERMANENT && now >= c.expired);
         require(_value <= c.amount.sub(c.paid));
-        c.id = block.number;
-        c.amount = c.amount.sub(c.paid).sub(_value);
-        c.paid = 0;
+
+        c.amount = c.amount.sub(_value);
         c.expired = _expired;
 
-        Account storage a = accounts[msg.sender];
-        require(_expired <= a.expired);
-        a.amount = a.amount.add(_value);
+        balances[msg.sender] = balances[msg.sender].add(_value);
 
-        emit Approval(msg.sender, _spender, c.id, c.amount, _expired);
+        emit Approval(msg.sender, _spender, c.id, c.amount, _expired, c.proxy);
     }
 
     function cancelApproval(address _spender) public {
         Check storage c = checks[msg.sender][_spender];
-        require(now >= c.expired || accounts[_spender].id != c.spenderId);
+        require(c.expired != PERMANENT && now >= c.expired);
         cancelApprovalInternal(msg.sender, _spender);
     }
 
@@ -219,6 +176,10 @@ contract ARPBank {
         emit Cashing(msg.sender, _from, c.id, amount);
     }
 
+    function balanceOf(address _owner) public view returns (uint256) {
+        return balances[_owner];
+    }
+
     function allowance(
         address _owner,
         address _spender
@@ -227,32 +188,31 @@ contract ARPBank {
         view
         returns (
             uint256 id,
-            uint256 spenderId,
             uint256 amount,
             uint256 paid,
-            uint256 expired
+            uint256 expired,
+            address proxy
         )
     {
         Check storage c = checks[_owner][_spender];
         id = c.id;
-        spenderId = c.spenderId;
         amount = c.amount;
         paid = c.paid;
         expired = c.expired;
+        proxy = c.proxy;
     }
 
     function cancelApprovalInternal(address _owner, address _spender) private {
         Check storage c = checks[_owner][_spender];
         require(c.id != 0);
         uint256 id = c.id;
-        uint256 amount = c.amount.sub(c.paid);
+        uint256 value = c.amount.sub(c.paid);
         delete checks[_owner][_spender];
 
-        if (amount > 0) {
-            Account storage a = accounts[_owner];
-            a.amount = a.amount.add(amount);
+        if (value > 0) {
+            balances[_owner] = balances[_owner].add(value);
         }
 
-        emit Approval(msg.sender, _spender, id, 0, 0);
+        emit Approval(msg.sender, _spender, id, 0, 0, address(0x0));
     }
 }
