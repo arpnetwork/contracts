@@ -1,5 +1,6 @@
 pragma solidity ^0.4.23;
 
+import "./ARPBank.sol";
 import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/ERC20.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/SafeERC20.sol";
@@ -10,182 +11,227 @@ contract ARPRegistry {
     using SafeERC20 for ERC20;
     using SafeMath for uint256;
 
+    uint256 public constant PERMANENT = 0;
+
     uint256 public constant SERVER_HOLDING = 100000 ether;
     uint256 public constant DEVICE_HOLDING = 500 ether;
-    uint256 public constant APP_HOLDING = 5000 ether;
-    uint256 public constant HOLDING_PER_DEVICE = 100 ether;
-    uint256 public constant EXPIRED_DELAY = 30 days;
-    uint256 public constant CAPACITY_MIN = 100;
-    uint256 public constant DEVICE_UNBOUND_DELAY = 1 days;
+    uint256 public constant EXPIRED_DELAY = 1 days;
 
     struct Server {
         uint32 ip;
         uint16 port;
-        uint256 capacity;
-        uint256 amount;
+        uint256 size;
         uint256 expired;
-
-        uint256 deviceCount;
     }
 
-    struct Device {
+    struct Binding {
         address server;
-        uint256 amount;
         uint256 expired;
     }
 
-    struct App {
-        uint256 amount;
-        uint256 expired;
-    }
-
-    ERC20 public arpToken;
+    ARPBank public arpBank;
 
     mapping (address => Server) public servers;
-    mapping (address => Device) public devices;
-    mapping (bytes32 => App) apps;
+    mapping (bytes32 => Binding) public bindings;
     address[] indexes;
 
-    event Registered(address indexed server);
-    event Unregistered(address indexed server);
-    event Updated(address indexed server);
+    event ServerRegistered(address indexed server);
+    event ServerUnregistered(address indexed server);
+    event ServerExpired(address indexed server);
     event DeviceBound(address indexed device, address indexed server);
     event DeviceUnbound(address indexed device, address indexed server);
-    event DeviceExpired(address indexed device, address indexed server);
+    event DeviceBoundExpired(address indexed device, address indexed server);
     event AppBound(address indexed app, address indexed server);
+    event AppUnbound(address indexed app, address indexed server);
+    event AppBoundExpired(address indexed app, address indexed server);
 
-    constructor(ERC20 _arpToken) public {
-        require(_arpToken != address(0x0));
-        arpToken = _arpToken;
+    constructor(ARPBank _arpBank) public {
+        require(_arpBank != address(0x0));
+        arpBank = _arpBank;
     }
 
-    function register(uint32 _ip, uint16 _port, uint256 _capacity, uint256 _amount) public {
+    function registerServer(uint32 _ip, uint16 _port) public {
         require(_ip != 0 && _port != 0);
-        require(_capacity >= CAPACITY_MIN);
-        require(_amount >= minHolding(_capacity));
+
+        (
+            ,
+            uint256 amount,
+            ,
+            uint256 expired,
+            address proxy
+        ) = arpBank.allowance(msg.sender, address(this));
+        require(amount >= SERVER_HOLDING);
+        require(expired == PERMANENT);
+        require(proxy == address(0x0));
 
         Server storage s = servers[msg.sender];
         require(s.ip == 0);
         s.ip = _ip;
         s.port = _port;
-        s.capacity = _capacity;
-        s.amount = _amount;
-        s.expired = now + EXPIRED_DELAY;
+
         indexes.push(msg.sender);
 
-        arpToken.safeTransferFrom(msg.sender, address(this), _amount);
-
-        emit Registered(msg.sender);
+        emit ServerRegistered(msg.sender);
     }
 
-    function unregister() public {
-        Server storage s = servers[msg.sender];
-        require(s.ip != 0);
-        require(now >= s.expired);
-        require(s.deviceCount == 0);
-        uint256 amount = s.amount;
-        delete servers[msg.sender];
-        for (uint256 i = 0; i < indexes.length; i++) {
-            if (indexes[i] == msg.sender) {
-                for (uint256 j = i + 1; j < indexes.length; j++) {
-                    indexes[j - 1] = indexes[j];
-                }
-                indexes.length = indexes.length - 1;
-                break;
-            }
-        }
-
-        arpToken.safeTransfer(msg.sender, amount);
-
-        emit Unregistered(msg.sender);
-    }
-
-    function update(uint32 _ip, uint16 _port, uint256 _capacity, uint256 _amount) public {
+    function updateServer(uint32 _ip, uint16 _port) public {
         require(_ip != 0 && _port != 0);
+
         Server storage s = servers[msg.sender];
         require(s.ip != 0);
-        require(s.amount + _amount >= minHolding(s.capacity + _capacity - s.deviceCount));
+
         s.ip = _ip;
         s.port = _port;
-        s.capacity = s.capacity.add(_capacity);
-        s.amount = s.amount.add(_amount);
-        s.expired = now + EXPIRED_DELAY;
-
-        if (_amount > 0) {
-            arpToken.safeTransferFrom(msg.sender, address(this), _amount);
-        }
-
-        emit Updated(msg.sender);
     }
 
-    function bindDevice(address _server) public {
-        require(devices[msg.sender].server == address(0x0));
-        require(arpToken.balanceOf(msg.sender) >= DEVICE_HOLDING);
-        require(arpToken.allowance(msg.sender, address(this)) >= DEVICE_HOLDING);
+    function unregisterServer() public {
+        Server storage s = servers[msg.sender];
+        require(s.ip != 0);
+
+        if (s.expired != PERMANENT) {
+            require(now >= s.expired);
+            require(s.size == 0);
+
+            delete servers[msg.sender];
+            for (uint256 i = 0; i < indexes.length; i++) {
+                if (indexes[i] == msg.sender) {
+                    for (uint256 j = i + 1; j < indexes.length; j++) {
+                        indexes[j - 1] = indexes[j];
+                    }
+                    indexes.length = indexes.length - 1;
+                    break;
+                }
+            }
+
+            arpBank.cancelApprovalBySpender(msg.sender);
+
+            emit ServerUnregistered(msg.sender);
+        } else {
+            s.expired = now + EXPIRED_DELAY;
+
+            emit ServerExpired(msg.sender);
+        }
+    }
+
+    function bindDevice(
+        address _server,
+        uint256 _amount,
+        uint256 _expired,
+        uint256 _signExpired,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    )
+        public
+    {
+        require(_server != address(0x0));
+        require(_expired == PERMANENT || _expired > now);
+        require(_signExpired > now);
+
+        Binding storage b = bindings[bytes32(msg.sender)];
+        if (b.server != address(0x0)) {
+            unbindDeviceInternal(msg.sender);
+        } else {
+            // Checks device approval
+            (
+                ,
+                uint256 amount,
+                ,
+                uint256 expired,
+                address proxy
+            ) = arpBank.allowance(msg.sender, address(this));
+            require(amount >= DEVICE_HOLDING);
+            require(expired == PERMANENT);
+            require(proxy == address(0x0));
+        }
+
+        b.server = _server;
 
         Server storage s = servers[_server];
-        require(s.deviceCount < s.capacity);
-        require(s.amount >= SERVER_HOLDING + HOLDING_PER_DEVICE);
-        s.amount = s.amount.sub(HOLDING_PER_DEVICE);
-        s.deviceCount = s.deviceCount.add(1);
+        require(s.ip != 0);
+        require(s.expired == PERMANENT);
+        s.size = s.size.add(1);
 
-        devices[msg.sender] = Device(_server, HOLDING_PER_DEVICE, 0);
-
-        arpToken.safeTransferFrom(msg.sender, address(this), DEVICE_HOLDING);
+        arpBank.approveByProxy(
+            _server,
+            msg.sender,
+            _amount,
+            _expired,
+            _signExpired,
+            _v,
+            _r,
+            _s
+        );
 
         emit DeviceBound(msg.sender, _server);
     }
 
     function unbindDevice() public {
-        require(devices[msg.sender].server != address(0x0));
+        if (bindings[bytes32(msg.sender)].server != address(0x0)) {
+            unbindDeviceInternal(msg.sender);
+        }
 
-        unbindDeviceInternal(msg.sender);
+        arpBank.cancelApprovalBySpender(msg.sender);
     }
 
     function unbindDeviceByServer(address _device) public {
-        Device storage dev = devices[_device];
-        require(dev.server == msg.sender);
+        Binding storage b = bindings[bytes32(_device)];
+        require(b.server == msg.sender);
 
-        Server storage s = servers[msg.sender];
-        if (now >= s.expired) {
+        uint256 expired = servers[msg.sender].expired;
+        if (expired != PERMANENT && now >= expired) {
             unbindDeviceInternal(_device);
-        } else if (dev.expired == 0) {
-            dev.expired = now + DEVICE_UNBOUND_DELAY;
-            devices[_device] = dev;
-
-            emit DeviceExpired(_device, msg.sender);
-        } else if (now >= dev.expired) {
-            require(dev.amount + s.amount >= minHolding(s.capacity - s.deviceCount + 1));
+        } else if (b.expired != PERMANENT) {
+            require(now >= b.expired);
             unbindDeviceInternal(_device);
         } else {
-            revert();
+            b.expired = now + EXPIRED_DELAY;
+
+            emit DeviceBoundExpired(_device, msg.sender);
         }
     }
 
-    function bindApp(address _server, uint256 _amount) public {
-        bytes32 key = makeKey(msg.sender, _server);
-        App storage app = apps[key];
-        app.amount = app.amount.add(_amount);
-        require(app.amount >= APP_HOLDING);
-        app.expired = now + EXPIRED_DELAY;
+    function bindApp(address _server) public {
+        require(_server != address(0x0));
 
-        if (_amount > 0) {
-            arpToken.safeTransferFrom(msg.sender, address(this), _amount);
-        }
+        bytes32 key = keccak256(abi.encodePacked(msg.sender, _server));
+        Binding storage b = bindings[key];
+        require(b.server == address(0x0));
+
+        b.server = _server;
+
+        Server storage s = servers[_server];
+        require(s.ip != 0);
+        require(s.expired == PERMANENT);
 
         emit AppBound(msg.sender, _server);
     }
 
     function unbindApp(address _server) public {
-        bytes32 key = makeKey(msg.sender, _server);
-        App storage app = apps[key];
-        require(now >= app.expired);
-        uint256 amount = app.amount;
-        delete apps[key];
+        require(_server != address(0x0));
 
-        if (amount > 0) {
-            arpToken.safeTransfer(msg.sender, amount);
+        bytes32 key = keccak256(abi.encodePacked(msg.sender, _server));
+        Binding storage b = bindings[key];
+        require(b.server != address(0x0));
+
+        Server storage s = servers[_server];
+
+        if (s.ip == 0 || s.expired != PERMANENT && now >= s.expired) {
+            unbindAppInternal(msg.sender, _server);
+        } else if (b.expired != PERMANENT) {
+            require(now >= b.expired);
+            unbindAppInternal(msg.sender, _server);
+        } else {
+            b.expired = now + EXPIRED_DELAY;
+
+            emit AppBoundExpired(msg.sender, _server);
         }
+    }
+
+    function unbindAppByServer(address _app) public {
+        require(_app != address(0x0));
+
+        unbindAppInternal(_app, msg.sender);
     }
 
     function serverByIndex(
@@ -197,10 +243,8 @@ contract ARPRegistry {
             address addr,
             uint32 ip,
             uint16 port,
-            uint256 capacity,
-            uint256 amount,
-            uint256 expired,
-            uint256 deviceCount
+            uint256 size,
+            uint256 expired
         )
     {
         require(_index < indexes.length);
@@ -209,53 +253,42 @@ contract ARPRegistry {
         Server storage s = servers[addr];
         ip = s.ip;
         port = s.port;
-        capacity = s.capacity;
-        amount = s.amount;
+        size = s.size;
         expired = s.expired;
-        deviceCount = s.deviceCount;
     }
 
     function serverCount() public view returns (uint256) {
         return indexes.length;
     }
 
-    function appOf(
-        address _app,
-        address _server
-    )
-        public
-        view
-        returns (
-            uint256 amount,
-            uint256 expired
-        )
-    {
-        bytes32 key = makeKey(_app, _server);
-        App storage app = apps[key];
-        amount = app.amount;
-        expired = app.expired;
-    }
-
     function unbindDeviceInternal(address _device) private {
-        Device storage dev = devices[_device];
-        address server = dev.server;
-        uint256 amount = dev.amount;
-        delete devices[_device];
+        bytes32 key = bytes32(_device);
+        address server = bindings[key].server;
+        require(server != address(0x0));
+        delete bindings[key];
 
         Server storage s = servers[server];
-        s.amount = s.amount.add(amount);
-        s.deviceCount = s.deviceCount.sub(1);
+        s.size = s.size.sub(1);
 
-        arpToken.safeTransfer(_device, DEVICE_HOLDING);
+        cancelApprovalByProxy(server, _device);
 
         emit DeviceUnbound(_device, server);
     }
 
-    function minHolding(uint256 capacity) private pure returns (uint256) {
-        return SERVER_HOLDING + HOLDING_PER_DEVICE * capacity;
+    function unbindAppInternal(address _app, address _server) private {
+        bytes32 key = keccak256(abi.encodePacked(_app, _server));
+        require(bindings[key].server != address(0x0));
+        delete bindings[key];
+
+        cancelApprovalByProxy(_app, _server);
+
+        emit AppUnbound(_app, _server);
     }
 
-    function makeKey(address _app, address _server) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_app, _server));
+    function cancelApprovalByProxy(address _owner, address _spender) private {
+        (,,,, address proxy) = arpBank.allowance(_owner, _spender);
+        if (proxy == address(this)) {
+            arpBank.cancelApprovalByProxy(_owner, _spender);
+        }
     }
 }
