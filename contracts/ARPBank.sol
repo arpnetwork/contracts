@@ -95,6 +95,51 @@ contract ARPBank {
         }
     }
 
+    function approveByProxy(
+        address _owner,
+        address _spender,
+        uint256 _amount,
+        uint256 _expired,
+        uint256 _signExpired,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    )
+        public
+    {
+        require(_owner != address(0x0));
+        require(_spender != address(0x0));
+        require(_expired == PERMANENT || _expired > now);
+        require(_signExpired > now);
+
+        // sign(owner, spender, amount, expired, proxy, signExpired)
+        bytes32 hash = keccak256(
+            abi.encodePacked(
+                _owner,
+                _spender,
+                _amount,
+                _expired,
+                msg.sender,
+                _signExpired
+            )
+        );
+        require(ecrecover(hash, _v, _r, _s) == _owner);
+
+        Check storage c = checks[_owner][_spender];
+        require(c.id == 0);
+        c.id = block.number;
+        c.amount = _amount;
+        c.expired = _expired;
+        c.proxy = msg.sender;
+
+        if (_amount > 0) {
+            require(_amount <= balances[_owner]);
+            balances[_owner] = balances[_owner].sub(_amount);
+        }
+
+        emit Approval(_owner, _spender, c.id, c.amount, _expired, c.proxy);
+    }
+
     function increaseApproval(
         address _spender,
         uint256 _value,
