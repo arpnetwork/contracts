@@ -272,6 +272,6 @@ contract ARPBank {
             balances[_owner] = balances[_owner].add(value);
         }
 
-        emit Approval(msg.sender, _spender, id, 0, 0, address(0x0));
+        emit Approval(_owner, _spender, id, 0, 0, address(0x0));
     }
 }
