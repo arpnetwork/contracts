@@ -210,11 +210,21 @@ contract ARPBank {
         cancelApprovalInternal(_owner, _spender);
     }
 
-    function cash(address _from, uint256 _amount, uint8 _v, bytes32 _r, bytes32 _s) public {
+    function cash(
+        address _from,
+        uint256 _amount,
+        uint8 _v,
+        bytes32 _r,
+        bytes32 _s
+    )
+        public
+    {
         Check storage c = checks[_from][msg.sender];
         require(_amount > c.paid);
         require(_amount <= c.amount);
-        bytes32 hash = keccak256(abi.encodePacked(c.id, _from, msg.sender, _amount));
+        bytes32 hash = keccak256(
+            abi.encodePacked(c.id, _from, msg.sender, _amount)
+        );
         require(ecrecover(hash, _v, _r, _s) == _from);
 
         uint256 amount = _amount.sub(c.paid);
