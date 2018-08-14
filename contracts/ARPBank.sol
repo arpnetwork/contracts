@@ -84,10 +84,14 @@ contract ARPBank {
             c.id = block.number;
             c.expired = _expired;
             c.proxy = _proxy;
-        } else if (c.expired != PERMANENT && now >= c.expired) {
-            c.id = block.number;
-            // DO NOT MODIFY EXPIRED HERE
+        } else {
+            require(_proxy == c.proxy);
+            if (c.expired != PERMANENT && now >= c.expired) {
+                c.id = block.number;
+                // DO NOT MODIFY EXPIRED HERE
+            }
         }
+
         if (_amount >= c.amount) {
             increaseApproval(_spender, _amount.sub(c.amount), _expired);
         } else {
