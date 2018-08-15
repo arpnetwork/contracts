@@ -220,6 +220,7 @@ contract ARPBank {
         public
     {
         Check storage c = checks[_from][msg.sender];
+        require(c.id != 0);
         require(_amount > c.paid);
         require(_amount <= c.amount);
         bytes32 hash = keccak256(
