@@ -152,7 +152,7 @@ contract ARPRegistry {
         require(s.expired == PERMANENT);
         s.size = s.size.add(1);
 
-        arpBank.approveByProxy(
+        arpBank.approveWithSignByProxy(
             _server,
             msg.sender,
             _amount,

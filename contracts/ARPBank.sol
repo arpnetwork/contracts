@@ -76,30 +76,26 @@ contract ARPBank {
     )
         public
     {
-        require(_spender != address(0x0));
-        require(_expired == PERMANENT || _expired > now);
-
-        Check storage c = checks[msg.sender][_spender];
-        if (c.id == 0) {
-            c.id = block.number;
-            c.expired = _expired;
-            c.proxy = _proxy;
-        } else {
-            require(_proxy == c.proxy);
-            if (c.expired != PERMANENT && now >= c.expired) {
-                c.id = block.number;
-                // DO NOT MODIFY EXPIRED HERE
-            }
-        }
-
-        if (_amount >= c.amount) {
-            increaseApproval(_spender, _amount.sub(c.amount), _expired);
-        } else {
-            decreaseApproval(_spender, c.amount.sub(_amount), _expired);
-        }
+        approveInternal(msg.sender, _spender, _amount, _expired, _proxy);
     }
 
     function approveByProxy(
+        address _owner,
+        address _spender,
+        uint256 _amount,
+        uint256 _expired
+    )
+        public
+    {
+        Check storage c = checks[_owner][_spender];
+        require(c.id != 0);
+        require(msg.sender == c.proxy);
+        // Forces override expired
+        c.expired = _expired;
+        approveInternal(_owner, _spender, _amount, _expired, msg.sender);
+    }
+
+    function approveWithSignByProxy(
         address _owner,
         address _spender,
         uint256 _amount,
@@ -111,10 +107,8 @@ contract ARPBank {
     )
         public
     {
-        require(_owner != address(0x0));
-        require(_spender != address(0x0));
-        require(_expired == PERMANENT || _expired > now);
         require(_signExpired > now);
+        require(checks[_owner][_spender].id == 0);
 
         // sign(owner, spender, amount, expired, proxy, signExpired)
         bytes32 hash = keccak256(
@@ -129,19 +123,7 @@ contract ARPBank {
         );
         require(ecrecover(hash, _v, _r, _s) == _owner);
 
-        Check storage c = checks[_owner][_spender];
-        require(c.id == 0);
-        c.id = block.number;
-        c.amount = _amount;
-        c.expired = _expired;
-        c.proxy = msg.sender;
-
-        if (_amount > 0) {
-            require(_amount <= balances[_owner]);
-            balances[_owner] = balances[_owner].sub(_amount);
-        }
-
-        emit Approval(_owner, _spender, c.id, c.amount, _expired, c.proxy);
+        approveInternal(_owner, _spender, _amount, _expired, msg.sender);
     }
 
     function increaseApproval(
@@ -151,47 +133,15 @@ contract ARPBank {
     )
         public
     {
-        require(_spender != address(0x0));
-        require(_value <= balances[msg.sender]);
-        require(_expired == PERMANENT || _expired > now);
-
         Check storage c = checks[msg.sender][_spender];
         require(c.id != 0);
-        require(
-            _expired == PERMANENT ||
-            (c.expired != PERMANENT && _expired >= c.expired));
 
-        if (_value > 0) {
-            balances[msg.sender] = balances[msg.sender].sub(_value);
-            c.amount = c.amount.add(_value);
+        // Forces keep id if approval expired
+        if (c.expired != PERMANENT && now >= c.expired) {
+            c.expired = _expired;
         }
-        c.expired = _expired;
 
-        emit Approval(msg.sender, _spender, c.id, c.amount, _expired, c.proxy);
-    }
-
-    function decreaseApproval(
-        address _spender,
-        uint256 _value,
-        uint256 _expired
-    )
-        public
-    {
-        require(_spender != address(0x0));
-        require(_value > 0);
-        require(_expired == PERMANENT || _expired > now);
-
-        Check storage c = checks[msg.sender][_spender];
-        require(c.id != 0);
-        require(c.expired != PERMANENT && now >= c.expired);
-        require(_value <= c.amount.sub(c.paid));
-
-        c.amount = c.amount.sub(_value);
-        c.expired = _expired;
-
-        balances[msg.sender] = balances[msg.sender].add(_value);
-
-        emit Approval(msg.sender, _spender, c.id, c.amount, _expired, c.proxy);
+        approveInternal(msg.sender, _spender, c.amount.add(_value), _expired, c.proxy);
     }
 
     function cancelApproval(address _spender) public {
@@ -260,6 +210,51 @@ contract ARPBank {
         paid = c.paid;
         expired = c.expired;
         proxy = c.proxy;
+    }
+
+    function approveInternal(
+        address _owner,
+        address _spender,
+        uint256 _amount,
+        uint256 _expired,
+        address _proxy
+    )
+        private
+    {
+        require(_owner != address(0x0));
+        require(_spender != address(0x0));
+        require(_expired == PERMANENT || _expired > now);
+
+        Check storage c = checks[_owner][_spender];
+        if (c.id == 0 || (c.expired != PERMANENT && now >= c.expired)) {
+            c.id = block.number;
+            c.paid = 0;
+            c.proxy = _proxy;
+        } else {
+            require(_amount >= c.amount);
+            require(
+                _expired == PERMANENT ||
+                (c.expired != PERMANENT && _expired >= c.expired)
+            );
+            require(_proxy == c.proxy);
+        }
+
+        uint256 value;
+        if (_amount > c.amount) {
+            value = _amount.sub(c.amount);
+            require(value <= balances[_owner]);
+
+            balances[_owner] = balances[_owner].sub(value);
+        } else if (_amount < c.amount) {
+            value = c.amount.sub(_amount);
+            require(value <= c.amount.sub(c.paid));
+            balances[_owner] = balances[_owner].add(value);
+        }
+
+        c.amount = _amount;
+        c.expired = _expired;
+
+        emit Approval(_owner, _spender, c.id, _amount, _expired, _proxy);
     }
 
     function cancelApprovalInternal(address _owner, address _spender) private {
